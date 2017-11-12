@@ -21,7 +21,7 @@ static void addSeg(int x, int y);
 // Snake is a deque, implemented as doubly linked list
 // to allow for O(1) adds/removes at head and tail as
 // well as dynamic resizing
-unsigned short snakeLength;
+unsigned short snakeLength = 0;
 static struct snakeSeg* head;
 static struct snakeSeg* tail;
 static unsigned int randNum;
@@ -55,9 +55,31 @@ void placeApple()
 	drawSprite(r % TILE_X, r / TILE_X, Apple);
 }
 
-// Creates initial snake
+// Creates initial snake and initializes board
 void createSnake()
 {
+	// Reset board
+	for (int i = 0; i < TILE_X * TILE_Y; i++)
+	{
+		board[i] = EMPTY;
+	}
+
+	// Destroy old snake if it exists
+	if (snakeLength > 0)
+	{
+		struct snakeSeg* thisSeg = head;
+
+		// Iterate through old segments and free each
+		while (thisSeg != tail)
+		{
+			struct snakeSeg* segToFree = thisSeg;
+			thisSeg = thisSeg->prev;
+			free(segToFree);
+		}
+		free(thisSeg);
+		snakeLength = 0;
+	}
+
 	int startX = (TILE_X - STARTING_LENGTH) / 2;
 	for (int i = 0; i < STARTING_LENGTH; i++)
 	{

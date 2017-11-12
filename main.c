@@ -66,6 +66,10 @@ void enterOver()
 	currentAction = &actionOver;
 	waitForVblank();
 	drawImage3(0, 0, 240, 160, GameOver);
+	char buffer[40];
+	sprintf(buffer, "Final Score: %-6d", score);
+	drawRect(0, 140, 240, 20, BLACK);
+	drawString(0, 145, buffer, WHITE);
 }
 
 void actionOver()
@@ -90,33 +94,36 @@ void actionSplash()
 
 void actionGame()
 {
-	if (KEY_DOWN_NOW(BUTTON_SELECT))
+	if (~BUTTONS)
 	{
-		enterSplash();
-		return;
-	}
-	if (KEY_DOWN_NOW(BUTTON_DOWN) && lastYDir != -1)
-	{
-		xDir = 0;
-		yDir = 1;
-	} 
-	if (KEY_DOWN_NOW(BUTTON_UP) && lastYDir != 1)
-	{
-		xDir = 0;
-		yDir = -1;
-	} 
-	if (KEY_DOWN_NOW(BUTTON_LEFT) && lastXDir != 1)
-	{
-		xDir = -1;
-		yDir = 0;
-	} 
-	if (KEY_DOWN_NOW(BUTTON_RIGHT) && lastXDir != -1)
-	{
-		xDir = 1;
-		yDir = 0;
+		if (KEY_DOWN_NOW(BUTTON_SELECT))
+		{
+			enterSplash();
+			return;
+		}
+		if (KEY_DOWN_NOW(BUTTON_DOWN) && lastYDir != -1)
+		{
+			xDir = 0;
+			yDir = 1;
+		} 
+		if (KEY_DOWN_NOW(BUTTON_UP) && lastYDir != 1)
+		{
+			xDir = 0;
+			yDir = -1;
+		} 
+		if (KEY_DOWN_NOW(BUTTON_LEFT) && lastXDir != 1)
+		{
+			xDir = -1;
+			yDir = 0;
+		} 
+		if (KEY_DOWN_NOW(BUTTON_RIGHT) && lastXDir != -1)
+		{
+			xDir = 1;
+			yDir = 0;
+		}
 	}
 	waitForVblank();
-	if (counter++ % 10 == 0)
+	if (counter++ % 5 == 0)
 	{
 		enum Tile result = moveBody(xDir, yDir);
 		switch (result) 
@@ -126,12 +133,13 @@ void actionGame()
 				break;
 			case WALL:
 			case SNAKE:
-				if (numCollisions-- <= 0)
+				numCollisions--;
+				if (numCollisions <= 0)
 				{
 					enterOver();
 					return;
 				}
-
+				break;
 			default:
 				score--;
 				if (numCollisions < MAX_COLLISIONS)
@@ -148,7 +156,7 @@ void actionGame()
 void displayScore()
 {
 	char buffer[40];
-	sprintf(buffer, "Score: %-6d              Length: %-4d", score, snakeLength);
-	drawRect(0, 140, 240, 20, WHITE);
-	drawString(0, 145, buffer, BLACK);
+	sprintf(buffer, "Score: %-6d", score);
+	drawRect(0, 140, 240, 20, BLACK);
+	drawString(0, 145, buffer, WHITE);
 }
