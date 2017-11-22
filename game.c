@@ -1,85 +1,101 @@
 #include "assets.h"
+#include "myLib.h"
 #include "game.h"
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-#define STARTING_LENGTH 4
-
-enum Tile board[TILE_X * TILE_Y] = {0};
-
-// Node for a snake segment
-struct snakeSeg {
-	struct snakeSeg* next;
-	struct snakeSeg* prev;
-	int x;
-	int y;
-};
-
-static const unsigned short* getSprite(struct snakeSeg* seg);
-static void addSeg(int x, int y);
-
-// Snake is a deque, implemented as doubly linked list
-// to allow for O(1) adds/removes at head and tail as
-// well as dynamic resizing
-unsigned short snakeLength = 0;
-static struct snakeSeg* head;
-static struct snakeSeg* tail;
-static unsigned int randNum;
+// Static prototypes
 
 
-void seed(unsigned int seed)
-{
-	randNum = seed;
-}
+/*
+Snake is implemented as a deque (backed by a doubly
+linked list) to allow for O(1) additions/removals at
+the ends (for movement) as well as painless resizing
+*/
+Snake snake;
 
-static unsigned int getRand() {
+// Game state that holds information on score, direction
+// of snake, state of board's tiles, etc
+GameState state;
 
-	// Seed is *completely* arbitrary
-
-	// Perform some basic xorshifts
-	// Not *super* robust but it works
-	randNum ^= randNum << 3;
-	randNum ^= randNum >> 5;
-	randNum ^= randNum << 7;
-	return randNum;
-}
-
+Mouse mouse;
 // Places an apple in a random empty cell
 void placeApple()
 {
-	int r = getRand() % (TILE_X * TILE_Y);
-	while(board[r] != EMPTY) {
-		r = (r + getRand() + 1) % (TILE_X * TILE_Y);
+	// Generate random coordinate
+	int r = rand() % (TILE_X * TILE_Y);
+
+	// Regenerate coordinate as needed until
+	// designated cell is empty
+	while(state.board[r] != EMPTY) {
+		r = (r + rand() + 1) % (TILE_X * TILE_Y);
 	}
-	board[r] = APPLE;
-	drawSprite(r % TILE_X, r / TILE_X, Apple);
+
+	// Place the apple
+	state.board[r] = APPLE;
+	const unsigned short* sprite;
+
+	// See if mouse spawned
+	if (!(mouse.spawnNum++ % MOUSE_SPAWN))
+	{
+		sprite = MouseUp;
+		mouse.isMouse = TRUE;
+		mouse.x = r % TILE_X;
+		mouse.y = r / TILE_X;
+	}
+	else
+	{
+		sprite = Apple;
+		mouse.isMouse = FALSE;
+	}
+
+	// Reset moves since last food eaten
+	state.numMoves = 0;
+	drawSprite(r % TILE_X, r / TILE_X, sprite);
 }
 
-// Creates initial snake and initializes board
-void createSnake()
+// Sets up starting conditions of game
+void initGame()
 {
-	// Reset board
+	static bool first = TRUE;
+
+	// Initialize numerical states
+	state.score = 100;
+	state.numCollisions = MAX_COLLISIONS;
+	state.lastXDir = 0;
+	state.lastYDir = 0;
+	state.xDir = 1;
+	state.yDir = 0;
+
+	mouse.isMouse = FALSE;
+	mouse.walkCooldown = 0;
+	mouse.spawnNum = 1;
+
+	// Reset board to be completely empty
 	for (int i = 0; i < TILE_X * TILE_Y; i++)
 	{
-		board[i] = EMPTY;
+		state.board[i] = EMPTY;
 	}
 
 	// Destroy old snake if it exists
-	if (snakeLength > 0)
+	if (!first)
 	{
-		struct snakeSeg* thisSeg = head;
+		SnakeSeg* thisSeg = snake.head;
 
-		// Iterate through old segments and free each
-		while (thisSeg != tail)
+		// Iterate through old segments and remove each
+		while (thisSeg != snake.tail)
 		{
-			struct snakeSeg* segToFree = thisSeg;
+			SnakeSeg* segToFree = thisSeg;
 			thisSeg = thisSeg->prev;
 			free(segToFree);
 		}
 		free(thisSeg);
-		snakeLength = 0;
 	}
 
+	first = FALSE;
+	snake.length = 0;
+
+	// Create starting snake
 	int startX = (TILE_X - STARTING_LENGTH) / 2;
 	for (int i = 0; i < STARTING_LENGTH; i++)
 	{
@@ -101,100 +117,234 @@ void createSnake()
 			drawSprite(startX + i, TILE_Y / 2, BodyHorizontal);
 		}
 	}
+
+	// Place the initial apple
+	placeApple();
 }
 
-// Moves the snake in the given direction
-// Returns the tile the snake attempted to
-// move into (only successful if empty or apple)
-enum Tile moveBody(int xDir, int yDir)
+// Attempts to move snake and updates game accordingly
+void stepGame()
 {
-	int xBase = head->x;
-	int yBase = head->y;
+	int xBase = snake.head->x;
+	int yBase = snake.head->y;
+	state.lastXDir = state.xDir;
+	state.lastYDir = state.yDir;
 
-	if (xBase + xDir >= TILE_X || xBase + xDir < 0 ||
-			yBase + yDir >= TILE_Y || yBase + yDir < 0)
+	if (xBase + state.xDir >= TILE_X || xBase + state.xDir < 0 ||
+			yBase + state.yDir >= TILE_Y || yBase + state.yDir < 0)
 	{
 		// Wall hit
-		return WALL;
+		state.numCollisions--;
+		return;
 	}
-	if (board[OFFSET(xBase + xDir, yBase + yDir, TILE_X)] == SNAKE)
+	if (state.board[OFFSET(xBase + state.xDir, yBase + state.yDir, TILE_X)] == SNAKE)
 	{
 		// Snake hit
-		return SNAKE;
+		state.numCollisions--;
+		return;
 	}
 
-	if (board[OFFSET(xBase + xDir, yBase + yDir, TILE_X)] == APPLE)
+	if (state.board[OFFSET(xBase + state.xDir, yBase + state.yDir, TILE_X)] == APPLE)
 	{
 		// Apple hit: grow into Apple square and generate new Apple
-		addSeg(xBase + xDir, yBase + yDir);
+		addSeg(xBase + state.xDir, yBase + state.yDir);
 
 		// Render new head
-		drawSprite(xBase + xDir, yBase + yDir, getSprite(head));
+		drawSprite(xBase + state.xDir, yBase + state.yDir, getSprite(snake.head));
 
 		// Render old head as body
-		drawSprite(xBase, yBase, getSprite(head->prev));
+		drawSprite(xBase, yBase, getSprite(snake.head->prev));
+
+		// Increase score
+		state.score += mouse.isMouse ? MOUSE_SCORE : APPLE_SCORE;
 
 		// Generate new Apple
 		placeApple();
-
-		return APPLE;
+		return;
 	}
 
+
 	// Moved into empty tile
-	struct snakeSeg* oldTail = tail;
-	tail = tail->next;
+	SnakeSeg* oldTail = snake.tail;
+	snake.tail = snake.tail->next;
 
 	// Erase old tail
 	eraseSprite(oldTail->x, oldTail->y);
-	board[OFFSET(oldTail->x, oldTail->y, TILE_X)] = EMPTY;
+	state.board[OFFSET(oldTail->x, oldTail->y, TILE_X)] = EMPTY;
 	free(oldTail);
-	snakeLength--;
-	addSeg(xBase + xDir, yBase + yDir);
+	snake.length--;
+	addSeg(xBase + state.xDir, yBase + state.yDir);
 
 	// New segment rendered as head
-	drawSprite(xBase + xDir, yBase + yDir, getSprite(head));
+	drawSprite(xBase + state.xDir, yBase + state.yDir, getSprite(snake.head));
 
 	// Rerender previous head as body
-	drawSprite(xBase, yBase, getSprite(head->prev));
+	drawSprite(xBase, yBase, getSprite(snake.head->prev));
 
 	// Other body segments do not change appearance
 	// Rerender new tail as tail
-	drawSprite(tail->x, tail->y, getSprite(tail));
-	return EMPTY;
+	drawSprite(snake.tail->x, snake.tail->y, getSprite(snake.tail));
+
+	// Apply score penalty if applicable
+	if (state.numMoves++ > PENALTY_DELAY)
+	{
+		state.score--;
+	}
+
+	// Regain grace collisions
+	if (state.numCollisions < MAX_COLLISIONS)
+	{
+		state.numCollisions++;
+	}
+
+	// If there is a mouse, try to move it
+	if (mouse.isMouse && mouse.walkCooldown-- < 0)
+	{
+		moveMouse();
+	}
 }
 
-// Adds a segment to the snake
+// Moves the mouse
+// Mouse will run away from snake if snake is close,
+// or will randomly walk if not close
+static void moveMouse()
+{
+	int xDir = 0;
+	int yDir = 0;
+
+	// Compute distances
+	int xDiff = mouse.x - snake.head->x;
+	int yDiff = mouse.y - snake.head->y;
+	int dist = abs(xDiff) + abs(yDiff);
+
+	// Does mouse see snake?
+	bool seen = dist <= MOUSE_VISION;
+	if (seen)
+	{
+			// run in a direction that will put distance
+			// between mouse and snake
+			int* dir = &xDir;
+			int* diff = &xDiff;
+			if (!*diff || ((rand() & 1) && *diff))
+			{
+				dir = &yDir;
+				diff = &yDiff;
+			}
+			*dir = (*diff > 0) ? 1 : -1;
+		mouse.walkCooldown = MOUSE_RUN_CD;
+	}
+	else
+	{
+		// Snake not seen, walk randomly
+		int* dir = &xDir;
+		if (rand() & 1)
+		{
+			dir = &yDir;
+		}
+		*dir = (rand() & 1) ? 1 : -1;
+		mouse.walkCooldown = MOUSE_WALK_CD;
+	}
+
+	bool walkOffScreen = (mouse.x + xDir >= TILE_X || mouse.x + xDir < 0 ||
+			mouse.y + yDir >= TILE_Y || mouse.y + yDir < 0);
+
+	// Attempt to walk in chosen direction
+	if (!walkOffScreen && state.board[OFFSET(mouse.x + xDir, mouse.y + yDir, TILE_X)] == EMPTY)
+	{
+		// Erase old mouse
+		eraseSprite(mouse.x, mouse.y);
+		state.board[OFFSET(mouse.x, mouse.y, TILE_X)] = EMPTY;
+
+		mouse.x += xDir;
+		mouse.y += yDir;
+
+		// Determine new sprite
+		const unsigned short* sprite;
+		switch (xDir)
+		{
+			case 1:
+				sprite = MouseRight;
+				break;
+			case -1:
+				sprite = MouseLeft;
+				break;
+			default:
+				switch (yDir)
+				{
+					case 1:
+						sprite = MouseDown;
+						break;
+					default:
+						sprite = MouseUp;
+						break;
+				}
+				break;
+		}
+
+		// Move and draw mouse
+		drawSprite(mouse.x, mouse.y, sprite);
+		state.board[OFFSET(mouse.x, mouse.y, TILE_X)] = APPLE;
+
+		// If seen, try moving again at next step
+		if (seen)
+		{
+			mouse.walkCooldown = 0;
+		}
+	}
+	else
+	{
+		// Try moving again at next step
+		mouse.walkCooldown = 0;
+	}
+}
+
+// Adds a segment to the snake as the head
 static void addSeg(int x, int y)
 {
-	struct snakeSeg* newHead = (struct snakeSeg*)malloc(sizeof(struct snakeSeg));
+
+	// Create the new segment
+	SnakeSeg* newHead = (SnakeSeg*)malloc(sizeof(SnakeSeg));
+
+	// Assign coordinates
 	newHead->x = x;
 	newHead->y = y;
-	if (snakeLength > 0) 
+
+	// Flag this cell as snake
+	state.board[OFFSET(x, y, TILE_X)] = SNAKE;
+
+	if (snake.length > 0) 
 	{
-		newHead->prev = head;
-		head->next = newHead;
-		head = newHead;
+
+		// Make this segment the new head
+		newHead->prev = snake.head;
+		snake.head->next = newHead;
+		snake.head = newHead;
 	} 
 	else 
 	{
-		head = newHead;
-		tail = newHead;
+
+		// This is the only segment, so it is both
+		// the head and the tail
+		snake.head = newHead;
+		snake.tail = newHead;
+
+
 	}
-	snakeLength++;
-	board[OFFSET(x, y, TILE_X)] = SNAKE;
+
+	snake.length++;
 }
 
 // Determines the sprite of the given segment based
 // on the relative positions of the adjacent segments
-static const unsigned short* getSprite(struct snakeSeg* seg)
+static const unsigned short* getSprite(SnakeSeg* seg)
 {
 	const unsigned short* sprite;
-	if (seg != tail && seg != head) {
+	if (seg != snake.tail && seg != snake.head) {
 
-		// This segment has a prev and next
-
-		struct snakeSeg* prevSeg = seg->prev;
-		struct snakeSeg* nextSeg = seg->next;
+		// This segment has a prev and next, so both
+		// need to be considered to determine sprite
+		SnakeSeg* prevSeg = seg->prev;
+		SnakeSeg* nextSeg = seg->next;
 		int nextXDiff = seg->x - nextSeg->x;
 		int nextYDiff = seg->y - nextSeg->y;
 		int prevXDiff = seg->x - prevSeg->x;
@@ -202,7 +352,6 @@ static const unsigned short* getSprite(struct snakeSeg* seg)
 
 		// This switch determines the sprite based on
 		// relative positions of the adjacent segments
-
 		switch (nextXDiff)
 		{
 			case 1:
@@ -245,12 +394,11 @@ static const unsigned short* getSprite(struct snakeSeg* seg)
 			break;
 		}
 	}
-	else if (seg == head) {
+	else if (seg == snake.head) {
 
 		// This segment is the head and only needs to
 		// consider the previous segment
-
-		struct snakeSeg* prevSeg = seg->prev;
+		SnakeSeg* prevSeg = seg->prev;
 
 		int xDiff = seg->x - prevSeg->x;
 		int yDiff = seg->y - prevSeg->y;
@@ -280,8 +428,7 @@ static const unsigned short* getSprite(struct snakeSeg* seg)
 	{
 		// This segment is the tail and only needs to
 		// consider the next segment
-
-		struct snakeSeg* nextSeg = seg->next;
+		SnakeSeg* nextSeg = seg->next;
 
 		int xDiff = seg->x - nextSeg->x;
 		int yDiff = seg->y - nextSeg->y;

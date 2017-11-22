@@ -1,11 +1,11 @@
+#include "assets.h"
+#include "myLib.h"
 #include "screen.h"
-#include "font.h"
-#include "dma.h"
-
 
 unsigned short* videoBuffer = (unsigned short *)0x6000000;
 void drawImage3(int x, int y, int width, int height, const unsigned short* image);
 
+// Draws a rectangle of solid color
 void drawRect(int x, int y, int width, int height, unsigned short color)
 {
 	DMA[3].src = &color;
@@ -16,12 +16,14 @@ void drawRect(int x, int y, int width, int height, unsigned short color)
 	}
 }
 
+// Skips to next Vblank for tear-free rendering
 void waitForVblank()
 {
 	while(SCANLINECOUNTER > 160);
 	while(SCANLINECOUNTER < 161);
 }
 
+// Draws a single character
 void drawChar(int x, int y, char ch, unsigned short color)
 {
 	for (int xx = 0; xx < 6; xx++)
@@ -36,6 +38,7 @@ void drawChar(int x, int y, char ch, unsigned short color)
 	}
 }
 
+// Draws a string of characters
 void drawString(int x, int y, char* string, unsigned short color)
 {
 	int i = 0;
@@ -62,13 +65,13 @@ void drawImage3(int x, int y, int width, int height, const unsigned short* image
 	}
 }
 
-// Draws a white rectangle over the sprite in the given cell
+// Draws a white rectangle over the snake sprite in the given cell
 void eraseSprite(int tileX, int tileY)
 {
 	drawRect(tileX * TILE_SIZE, tileY * TILE_SIZE, TILE_SIZE, TILE_SIZE, WHITE);
 }
 
-
+// Initializes screen by initializing display control register
 void initScreen()
 {
 	REG_DISPCTL = MODE3 | BG2_ENABLE;
