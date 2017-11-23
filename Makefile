@@ -13,18 +13,12 @@ PROGNAME = Snek
 # that will be compiled into your program. For example
 # if you have main.c and myLib.c then in the following
 # line you would put main.o and myLib.o
-OFILES = main.o font.o HeadDown.o screen.o \
-Apple.o BodyHorizontal.o BodyVertical.o HeadDown.o HeadLeft.o \
-HeadRight.o HeadUp.o TailDown.o TailLeft.o TailRight.o TailUp.o TurnDownLeft.o \
-TurnDownRight.o TurnUpLeft.o TurnUpRight.o game.o TitleScreen.o GameOver.o
+OFILES = main.o game.o screen.o assets.o
 
 # The header files you have created.
 # This is necessary to determine when to recompile for files.
 # This should be a space (SPACE!) separated list of .h files
-HFILES = Apple.h BodyHorizontal.h BodyVertical.h HeadDown.h HeadLeft.h \
-HeadRight.h HeadUp.h TailDown.h TailLeft.h TailRight.h TailUp.h TurnDownLeft.h \
-TurnDownRight.h TurnUpLeft.h TurnUpRight.h font.h screen.h inputs.h game.h \
-assets.h snakeBody.h TitleScreen.h GameOver.h
+HFILES = main.h game.h myLib.h assets.h screen.h
 
 ################################################################################
 # These are various settings used to make the GBA toolchain work
